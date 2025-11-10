@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Photo Downloader</title>
+  <!-- External libs for bulk zipping and saving -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js" defer></script>
+  <link rel="icon" type="image/x-icon" href="md purple.jpg">
+  <style>
+        body {
+           
+            cursor: url('https://cur.cursors-4u.net/cursors/cur-2/cur103.cur'), auto; 
+        }
+    </style>
+  <style>
+    :root{
+      --bg:#1a0528; /* deep purple */
+      --card:#24093a;
+      --accent:#7b2cbf;
+      --muted:#a69acb;
+      --glass: rgba(255,255,255,0.03);
+      --radius:14px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family:Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background:linear-gradient(180deg,var(--bg) 0%, #120218 100%);
+      color: #eee; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+      padding:28px;
+    }
+
+    header{display:flex;gap:16px;align-items:center;justify-content:space-between;margin-bottom:18px}
+    .brand{display:flex;gap:12px;align-items:center}
+    .logo{width:46px;height:46px;background:linear-gradient(135deg,var(--accent),#5a189a);border-radius:10px;display:grid;place-items:center;font-weight:700}
+    h1{font-size:18px;margin:0}
+    p.lead{margin:0;color:var(--muted);font-size:13px}
+
+    .controls{display:flex;gap:10px;align-items:center}
+    button{background:var(--accent);border:0;padding:10px 14px;border-radius:10px;color:white;font-weight:600;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,0.45)}
+    button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);}
+
+    /* gallery grid */
+    .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+    .card{background:var(--card);border-radius:var(--radius);overflow:hidden;position:relative;padding:8px}
+    .thumb{width:100%;height:160px;object-fit:cover;border-radius:10px;display:block;transition:transform .28s ease}
+    .card:hover .thumb{transform:scale(1.03)}
+    .meta{display:flex;justify-content:space-between;align-items:center;padding-top:8px}
+    .meta .title{font-size:13px}
+    .meta .actions{display:flex;gap:8px;align-items:center}
+    .download-btn{background:linear-gradient(90deg,var(--accent),#a44bd4);padding:6px 8px;border-radius:8px;border:0;color:white;cursor:pointer}
+    .select-checkbox{width:18px;height:18px}
+
+    /* Modal */
+    .modal{position:fixed;inset:0;background:linear-gradient(180deg,rgba(6,3,12,0.6),rgba(6,3,12,0.9));display:none;align-items:center;justify-content:center;padding:28px}
+    .modal.open{display:flex}
+    .modal-content{max-width:1100px;width:100%;background:var(--card);border-radius:16px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,0.6);display:grid;grid-template-columns:1fr 320px;gap:16px}
+    .modal-img{width:100%;height:70vh;object-fit:contain;border-radius:10px;background:var(--glass)}
+    .sidebar{padding:6px;display:flex;flex-direction:column;gap:10px}
+    .progress{height:10px;background:rgba(255,255,255,0.06);border-radius:999px;overflow:hidden}
+    .progress > i{display:block;height:100%;width:0%;background:linear-gradient(90deg,#7b2cbf,#a44bd4)}
+
+    footer{margin-top:18px;color:var(--muted);font-size:13px}
+
+    /* responsive tweaks */
+    @media (max-width:900px){
+      .modal-content{grid-template-columns:1fr}
+      .modal-img{height:50vh}
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo">PD</div>
+      <div>
+        <h1>Photo Downloader by HIRU_OFFICIAL(v.2.0)</h1>
+        <p class="lead">Smooth gallery with single & bulk photo downloads, lazy loading and progress UI.</p>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="download-selected">Download Selected</button>
+      <button class="secondary" id="select-all">Select All</button>
+      <button class="secondary" id="clear-selection">Clear</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="gallery" id="gallery">
+      <!-- Cards will be injected by JavaScript. Example data provided in script. -->
+    </section>
+
+    <!-- Modal preview -->
+    <div class="modal" id="modal" aria-hidden="true">
+      <div class="modal-content" role="dialog" aria-modal="true">
+        <div>
+          <img id="modalImage" class="modal-img" alt="Preview image" src="" />
+        </div>
+        <aside class="sidebar">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <strong id="modalTitle">Image title</strong>
+              <div style="font-size:13px;color:var(--muted)" id="modalSize">Size: --</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <button id="modalDownload" class="download-btn">Download</button>
+              <button id="modalClose" class="secondary">Close</button>
+            </div>
+          </div>
+
+          <div>
+            <label style="font-size:13px;color:var(--muted)">Download options</label>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <select id="sizeSelect" style="flex:1;padding:8px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,0.04);color:inherit">
+                <option value="original">Original</option>
+                <option value="large">Large (1600px)</option>
+                <option value="medium">Medium (1000px)</option>
+                <option value="small">Small (600px)</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label style="font-size:13px;color:var(--muted)">Bulk download progress</label>
+            <div class="progress" aria-hidden="true"><i id="bulkProgressBar"></i></div>
+            <div style="font-size:13px;color:var(--muted);margin-top:6px" id="bulkStatus">Idle</div>
+          </div>
+
+        </aside>
+      </div>
+    </div>
+
+    <footer>
+      Tip: You can use your own image URLs by editing the `images` list in the script. The system fetches blobs and zips them for bulk download.
+    </footer>
+  </main>
+
+  <script>
+    // Example dataset - replace with your own image URLs (CORS-enabled) or serve them from your server.
+    const images = Array.from({length:12}).map((_,i)=>({
+      id: i+1,
+      title: `Photo ${i+1}`,
+      // Using picsum.photos for sample images; replace with your CDN or server paths for production
+      url: `https://picsum.photos/id/${30+i}/2000/1200`,
+      thumb: `https://picsum.photos/id/${30+i}/600/400`
+    }));
+
+    const galleryEl = document.getElementById('gallery');
+    const modal = document.getElementById('modal');
+    const modalImage = document.getElementById('modalImage');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalSize = document.getElementById('modalSize');
+    const modalDownload = document.getElementById('modalDownload');
+    const modalClose = document.getElementById('modalClose');
+    const sizeSelect = document.getElementById('sizeSelect');
+    const bulkProgressBar = document.getElementById('bulkProgressBar');
+    const bulkStatus = document.getElementById('bulkStatus');
+
+    // Utility: create card
+    function createCard(img){
+      const card = document.createElement('article');
+      card.className = 'card';
+      card.dataset.id = img.id;
+
+      card.innerHTML = `
+        <img class="thumb" data-original="${img.url}" src="${img.thumb}" loading="lazy" alt="${img.title}" />
+        <div class="meta">
+          <div class="title">${img.title}</div>
+          <div class="actions">
+            <input type="checkbox" class="select-checkbox" aria-label="Select ${img.title}" />
+            <button class="download-btn" data-action="download">Download</button>
+          </div>
+        </div>
+      `;
+
+      // open modal on image click
+      card.querySelector('.thumb').addEventListener('click',()=>openModal(img));
+      card.querySelector('[data-action="download"]').addEventListener('click',()=>downloadImage(img,'original'));
+      return card;
+    }
+
+    // render gallery
+    function renderGallery(){
+      galleryEl.innerHTML = '';
+      images.forEach(img=>galleryEl.appendChild(createCard(img)));
+    }
+
+    // open modal
+    function openModal(img){
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden','false');
+      modalImage.src = img.url;
+      modalImage.alt = img.title;
+      modalTitle.textContent = img.title;
+      modalSize.textContent = 'Loading...';
+
+      // try to estimate size by head request? We'll fetch the image header using fetch and read content-length when available
+      fetch(img.url, {method:'HEAD'}).then(r=>{
+        const size = r.headers.get('content-length');
+        if(size) modalSize.textContent = `Size: ${formatBytes(parseInt(size,10))}`;
+        else modalSize.textContent = 'Size: unknown';
+      }).catch(()=>modalSize.textContent = 'Size: unknown');
+
+      // set download handler
+      modalDownload.onclick = ()=>downloadImage(img, sizeSelect.value);
+    }
+
+    modalClose.addEventListener('click',closeModal);
+    modal.addEventListener('click',(e)=>{ if(e.target===modal) closeModal(); });
+    function closeModal(){ modal.classList.remove('open'); modal.setAttribute('aria-hidden','true'); }
+
+    // format bytes
+    function formatBytes(bytes){
+      if(bytes===0) return '0 B';
+      const k=1024; const sizes=['B','KB','MB','GB','TB'];
+      const i=Math.floor(Math.log(bytes)/Math.log(k));
+      return parseFloat((bytes/Math.pow(k,i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // download single image. size can be 'original','large','medium','small'
+    async function downloadImage(img,size){
+      try{
+        const url = buildSizedUrl(img.url,size);
+        const resp = await fetch(url);
+        if(!resp.ok) throw new Error('Failed to fetch image');
+        const blob = await resp.blob();
+        const ext = blob.type.split('/')[1] || 'jpg';
+        const filename = `${slugify(img.title)}_${size}.${ext}`;
+        saveAs(blob, filename);
+      }catch(err){
+        alert('Download failed: '+err.message);
+      }
+    }
+
+    // Helper to change size - this assumes images are server-resizable or you host multiple sizes.
+    function buildSizedUrl(url,size){
+      if(size==='original') return url;
+      // This logic uses picsum parameter-style as example where we requested large sizes originally.
+      // For production, replace with your resizing endpoint or CDN parameters.
+      if(size==='large') return url.replace(/(\/[0-9]+\/[0-9]+$)/, '/1600/1000');
+      if(size==='medium') return url.replace(/(\/[0-9]+\/[0-9]+$)/, '/1000/667');
+      if(size==='small') return url.replace(/(\/[0-9]+\/[0-9]+$)/, '/600/400');
+      return url;
+    }
+
+    // slugify
+    function slugify(text){ return text.toString().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
+
+    // bulk download selected images into a ZIP
+    async function downloadSelected(){
+      const selected = getSelectedImages();
+      if(selected.length===0){ alert('No images selected'); return; }
+
+      // ensure libraries loaded
+      if(typeof JSZip === 'undefined' || typeof saveAs === 'undefined'){
+        alert('Required libraries not loaded. Make sure JSZip and FileSaver are available.');
+        return;
+      }
+
+      bulkStatus.textContent = `Preparing ${selected.length} images...`;
+      const zip = new JSZip();
+      let count = 0;
+
+      for(const img of selected){
+        try{
+          const resp = await fetch(img.url);
+          if(!resp.ok) throw new Error('Fetch failed');
+          const blob = await resp.blob();
+          const ext = blob.type.split('/')[1] || 'jpg';
+          const name = `${slugify(img.title)}.${ext}`;
+          zip.file(name, blob);
+        }catch(err){
+          console.warn('Failed to fetch',img.url,err);
+        }
+        count++;
+        const pct = Math.round((count/selected.length)*100);
+        bulkProgressBar.style.width = pct + '%';
+        bulkStatus.textContent = `Added ${count} of ${selected.length}`;
+      }
+
+      bulkStatus.textContent = 'Zipping...';
+      const content = await zip.generateAsync({type:'blob'}, (meta)=>{
+        const pct = Math.round(meta.percent);
+        bulkProgressBar.style.width = pct + '%';
+        bulkStatus.textContent = `Zipping ${pct}%`;
+      });
+
+      saveAs(content, `photos_${Date.now()}.zip`);
+      bulkStatus.textContent = 'Done';
+      setTimeout(()=>{ bulkProgressBar.style.width='0%'; bulkStatus.textContent='Idle'; }, 1500);
+    }
+
+    // helpers for selection
+    function getSelectedImages(){
+      const checks = Array.from(document.querySelectorAll('.select-checkbox'));
+      return checks.filter(c=>c.checked).map(c=>{
+        const card = c.closest('.card');
+        const id = Number(card.dataset.id);
+        return images.find(i=>i.id===id);
+      }).filter(Boolean);
+    }
+
+    document.getElementById('download-selected').addEventListener('click',downloadSelected);
+    document.getElementById('select-all').addEventListener('click',()=>{
+      document.querySelectorAll('.select-checkbox').forEach(ch=>ch.checked=true);
+    });
+    document.getElementById('clear-selection').addEventListener('click',()=>{
+      document.querySelectorAll('.select-checkbox').forEach(ch=>ch.checked=false);
+    });
+
+    // initial render
+    renderGallery();
+
+    // Accessibility: handle Escape to close modal
+    window.addEventListener('keydown',(e)=>{ if(e.key==='Escape') closeModal(); });
+
+    // IMPORTANT: When using images hosted elsewhere, ensure the server provides correct CORS headers so fetch() can read blobs.
+    // If you serve images from your own domain, it's best to host a resized variant endpoint or use a CDN with image resizing.
+
+  </script>
+
+</body>
+</html>
